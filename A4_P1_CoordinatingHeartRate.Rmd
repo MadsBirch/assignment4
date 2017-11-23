@@ -148,7 +148,7 @@ return(object)
 }
 
 ```{r}
-Prepro <- function(path){
+Prepro = function(path){
 
   #read
   file = read.csv(path)
@@ -187,8 +187,8 @@ Prepro <- function(path){
 }
 
 
+lapply(file_list, Prepro)
 
-Prepro('data/Study1_G1_T1_Synchronous.csv')
 
 ```
 
