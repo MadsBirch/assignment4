@@ -142,6 +142,56 @@ for (i in file_list){i
 }
 
 ```
+myfunction <- function(arg1, arg2, ... ){
+statements
+return(object)
+}
+
+```{r}
+Prepro <- function(path){
+
+  #read
+  file = read.csv(path)
+  
+  #------ Remove outliers ------
+  removeOuts = function(ts,threshold){
+   ts[ts > (mean(ts,na.rm=T) + (threshold*sd(ts,na.rm=T))) | ts < (mean(ts,na.rm=T) - (threshold*sd(ts,na.rm=T)))] = mean(ts,na.rm=T)
+  return(ts)}
+
+  #Set threshhold
+  threshold=2.5 
+
+  #remove outliers
+  file$HR1=removeOuts(file$HR1,threshold)
+
+
+  #------ Downsample ------
+  file = file %>% group(n= 100, method= 'greedy') %>% dplyr::summarise(time = mean(time,na.rm=T), HR1 = mean(HR1,na.rm=T), HR2 = mean(HR2,na.rm=T), Resp1 = mean(Resp1,na.rm=T), Resp2 = mean(Resp2,na.rm=T))
+
+  #------ Scale ------
+  file$HR1 = scale(file$HR1)
+  file$HR2 = scale(file$HR2)
+  file$Resp1 = scale(file$Resp1)
+  file$Resp2 = scale(file$Resp2)
+  
+  
+  
+  
+  #Write file
+  filename = paste("PP_data/PP_", substring(path, first = 6, last = 1000000))
+  
+  file = write.csv(file, file = filename)
+  
+  
+  return(file)
+}
+
+
+
+Prepro('data/Study1_G1_T1_Synchronous.csv')
+
+```
+
 
 
 
@@ -285,6 +335,10 @@ for (i in pitch_files) {
 ```
 
 2) Do you observe interpersonal coordination in heart rate and respiration? Describe your control baseline, the method used to quantify coordination, and the statistical models used to infer whether coordination was higher than in the baseline. Report the results of the models.
+
+#Loop 1 med data fra filnavn, descriptive stats, optimale parametre
+#Loop 2 Kør CRQA med median parameter
+#Step 3 profit
 
 3) Do you observe differences in coordination between conditions? Report the models and results.
 
