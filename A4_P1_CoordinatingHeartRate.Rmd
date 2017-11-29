@@ -24,8 +24,6 @@ library(groupdata2)
 library(stringr)
 
 #Load data
-setwd(getwd())
-
 file_list = list.files('data', pattern = "*.csv", full.names = TRUE)
 #data = do.call(rbind, lapply(file_list, read.delim))
 #for (i in 1:length(file_list)) assign(file_list[i], read.csv(file_list[i]))
@@ -64,90 +62,11 @@ test_file$HR2 = scale(test_file$HR2)
 test_file$Resp1 = scale(test_file$Resp1)
 test_file$Resp2 = scale(test_file$Resp2)
 
-#------ Preprocessing all files ------
-#standard parameters
-par = list(lgM =  15, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 40, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = "mindip")
-
-#null list
-loop1DF = NULL
-
-#Loop1: preprocessing and optimizing parameters
-for (i in file_list){i
-  #------ Read file ------
-  file = read.csv(i, header = TRUE)
-  
-  #------ Extract info from filename ------
-  extract = str_extract_all(i, "\\d+", simplify = TRUE)
-  Study = extract[1]
-  Pair_number = extract[2]
-  Condition = extract[3]
-  
-  #Remove outliers
-  file$HR1=removeOuts(file$HR1,threshold)
-  file$HR2=removeOuts(file$HR2,threshold)
-  file$Resp1=removeOuts(file$Resp1,threshold)
-  file$Resp2=removeOuts(file$Resp2,threshold)
-  
-  #Downsample
-  file = file %>% group(n= 100, method= 'greedy') %>% dplyr::summarise(time = mean(time,na.rm=T), HR1 = mean(HR1,na.rm=T), HR2 = mean(HR2,na.rm=T), Resp1 = mean(Resp1,na.rm=T), Resp2 = mean(Resp2,na.rm=T))
-  
-  #Scale
-  file$HR1 = scale(file$HR1)
-  file$HR2 = scale(file$HR2)
-  file$Resp1 = scale(file$Resp1)
-  file$Resp2 = scale(file$Resp2)
-  
-  #------ Find optimal parameters ------
-  #If parameters are found: save them. Else: save as NA
-  #heart rate
-  ans_heart = try(optimizeParam(file$HR1, file$HR2, par, min.rec = 3, max.rec = 5))
-     if (length(ans) > 1) {
-       radius_h = ans_heart$radius
-       emddim_h = ans_heart$emddim
-       delay_h = ans_heart$delay
-     }
-     else {
-       radius_h = NA
-       emddim_h = NA
-       delay_h = NA
-     }
-  #Respiration rate
-  ans_resp = try(optimizeParam(file$Resp1, file$Resp2, par, min.rec = 3, max.rec = 5))
-     if (length(ans) > 1) {
-       radius_r = ans_heart$radius
-       emddim_r = ans_heart$emddim
-       delay_r = ans_heart$delay
-     }
-     else {
-       radius_r = NA
-       emddim_r = NA
-       delay_r = NA
-     }
-  
-  #Make relevant information into a one row data frame
-  df_result = data.frame(Study, 
-                             Pair_number, 
-                             Condition, 
-                             radius_h, 
-                             emddim_h, 
-                             delay_h,
-                             radius_r, 
-                             emddim_r, 
-                             delay_r,
-                             )
-  #Bind the above row to the actual dataset for loop 1
-  loop1DF = rbind(loop1DF, df_result)
-  
-  
-}
-
 ```
-myfunction <- function(arg1, arg2, ... ){
-statements
-return(object)
-}
+
 
 ```{r}
+#Preprocessing function
 Prepro = function(path){
 
   #read
@@ -163,6 +82,9 @@ Prepro = function(path){
 
   #remove outliers
   file$HR1=removeOuts(file$HR1,threshold)
+  file$HR2=removeOuts(file$HR2,threshold)
+  file$Resp1=removeOuts(file$Resp1,threshold)
+  file$Resp2=removeOuts(file$Resp2,threshold)
 
 
   #------ Downsample ------
@@ -174,163 +96,40 @@ Prepro = function(path){
   file$Resp1 = scale(file$Resp1)
   file$Resp2 = scale(file$Resp2)
   
-  
-  
-  
   #Write file
   filename = paste("PP_data/PP_", substring(path, first = 6, last = 1000000))
-  
   file = write.csv(file, file = filename)
-  
   
   return(file)
 }
 
+#Use preprocessing on list
+#lapply(file_list, Prepro)
 
-lapply(file_list, Prepro)
-
-
-```
-
-
+# Making filelist of preprocessed data files
+pp_file_list = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 
 
+#Test line for loop below
+#ggplot(test_file, aes(time, HR1))+geom_line()+labs(title = "hallo")
 
-
-```{r}
-
-#------ Loop 1: Descriptive stats and parameters ------
-
-#standard parameters
-par = list(lgM =  15, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 40, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = "mindip")
-
-#Loop 
-for (i in pitch_files) {
-  # file = list.files(wd) #paste("Pitch/", files, sep = '')
-  
-  #------ Read file ------
-  #Paste pitch to get full path to file
-  dest = paste("Pitch/", i, sep = '')
+# ggplot loop to see if there are still artifacts in pp data
+for (file in pp_file_list) {
+  dest = paste("", file, sep = '')
   #Read file
-  x = read.table(dest, sep = "\t", header = TRUE)
+  x = read.csv(dest, header = TRUE)
   
-  #------ Extract info from filename ------
-  extract = str_extract_all(i, "\\d+", simplify = TRUE)
-  Study = extract[1]
-  Diagnosis = extract[2]
-  ID = extract[3]
-  trial = extract[4]
+  #filename = paste(substring(file, first = 12, last = 1000000))
   
-  #------ Descriptive stats ------
-  mean = mean(x$f0, na.rm = TRUE)
-  sd = sd(x$f0, na.rm = TRUE)
-  range = range(x$f0, na.rm = TRUE)
-  rangeL = range[1]
-  rangeU = range[2]
-  median = median(x$f0, na.rm = TRUE)
-  IQR = IQR(x$f0, na.rm = TRUE) #Interquartile range
-  mad = mad(x$f0, na.rm = TRUE) #Median absolute deviation
-  
-  #------ Find optimal parameters ------
-  #If parameters are found: save them. Else: save as NA
-  ans = try(optimizeParam(x$f0, x$f0, par, min.rec = 3, max.rec = 5))
-     if (length(ans) > 1) {
-       radius = ans$radius
-       emddim = ans$emddim
-       delay = ans$delay
-     }
-     else {
-       radius = NA
-       emddim = NA
-       delay = NA
-     }
-
-
-  #------ Make dataframe ------  
-  #Make relevant information into a one row data frame
-  df_result = data.frame(ID, 
-                             Study, 
-                             trial, 
-                             Diagnosis, 
-                             mean, 
-                             sd, 
-                             rangeL,
-                             rangeU,
-                             median, 
-                             IQR, 
-                             mad, 
-                             radius, 
-                             emddim, 
-                             delay
-                             )
-  #Bind the above row to the actual dataset for loop 1
-  loop1DF = rbind(loop1DF, df_result)
+  print(ggplot(x, aes(time, HR1))+geom_line()+labs(title = file))
+ # ggsave()
+  print(ggplot(x, aes(time, HR2))+geom_line()+labs(title = file))
+  print(ggplot(x, aes(time, Resp1))+geom_line()+labs(title = file))
+  print(ggplot(x, aes(time, Resp2))+geom_line()+labs(title = file))
 }
 
+#Manually removed files where the plots showed artifacts from the folder.
 
-
-
-#------ Median parameters for loop 2 ------
-median_radius = median(loop1DF$radius, na.rm = TRUE)
-median_emddim = median(loop1DF$emddim, na.rm = TRUE)
-median_delay = median(loop1DF$delay, na.rm = TRUE)
-
-#------ Null list for loop 2 ------
-loop2DF = data.frame()
-
-#------ Loop 2: CRQA ------
-for (i in pitch_files) {
-  #------ Read file ------
-  dest = paste("Pitch/", i, sep = '')
-  x = read.table(dest, sep = "\t", header = TRUE)
-  
-  #------ extract info from filename ------
-  extract = str_extract_all(i, "\\d+", simplify = TRUE)
-  Study = extract[1]
-  Diagnosis = extract[2]
-  ID = extract[3]
-  trial = extract[4]
-  
-  #------ CRQA ------
-  a = try(crqa(x$f0, x$f0,delay = median_delay, embed= median_emddim, radius= median_radius,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
-  
-  #If analysis fails, record NA
-  if (length(a) > 2) {
-    RR = a[1]
-    DET= a[2]
-    NRLINE = a[3]
-    maxL = a[4]
-    L = a[5]
-    ENTR = a[6]
-    rENTR = a[7]
-    LAM = a[8]
-    TT = a[9]
-  }
-  else {
-    RR = NA
-    DET= NA
-    NRLINE = NA
-    maxL = NA
-    L = NA
-    ENTR = NA
-    rENTR = NA
-    LAM = NA
-    TT = NA
-  }
-  
-
-  #------ Make dataframe ------  
-  #Make relevant information into a one row data frame
-  df_result = data.frame(ID, 
-                             Study, 
-                             trial, 
-                             Diagnosis, 
-    RR, DET, NRLINE, maxL, L, ENTR, rENTR, LAM, TT
-                             )
-  
-  #Bind the above row to the actual dataset for loop 2
-  loop2DF = rbind(loop2DF, df_result)
-}
 
 ```
 
@@ -340,7 +139,297 @@ for (i in pitch_files) {
 #Loop 2 Kør CRQA med median parameter
 #Step 3 profit
 
+
+```{r}
+#Make list of files to run through
+PP_final = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
+
+#standard parameters
+par = list(lgM =  15, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 15, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = "mindip")
+
+#null list
+loop1DF = data.frame()
+
+#i = PP_final[1]
+
+#Loop1: preprocessing and optimizing parameters
+for (i in PP_final){
+  #------ Read file ------
+  file = read.csv(i, header = TRUE)
+  
+  #------ Extract info from filename ------
+  extract = str_extract_all(i, "\\d+", simplify = TRUE)
+  Study = extract[1]
+  Pair_number = extract[2]
+  Condition = extract[3]
+  
+  
+  #------ Find optimal parameters ------
+  #If parameters are found: save them. Else: save as NA
+  #heart rate
+  ans_heart = try(optimizeParam(file$HR1, file$HR2, par, min.rec = 3, max.rec = 5))
+     if (length(ans_heart) > 1) {
+       radius_h = ans_heart$radius
+       emddim_h = ans_heart$emddim
+       delay_h = ans_heart$delay
+     } else {
+       radius_h = NA
+       emddim_h = NA
+       delay_h = NA
+     }
+  
+  #  Respiration rate
+  ans_resp = try(optimizeParam(file$Resp1, file$Resp2, par, min.rec = 3, max.rec = 5))
+     if (length(ans_resp) > 1) {
+       radius_r = ans_resp$radius
+       emddim_r = ans_resp$emddim
+       delay_r = ans_resp$delay
+     } else {
+       radius_r = NA
+       emddim_r = NA
+       delay_r = NA
+     }
+  
+  #------ Save data ------
+  #Make relevant information into a one row data frame
+  df_result = data.frame(Study, 
+                             Pair_number, 
+                             Condition, 
+                             radius_h, 
+                             emddim_h, 
+                             delay_h,
+                             radius_r, 
+                             emddim_r, 
+                             delay_r
+                             )
+  #Bind the above row to the actual dataset for loop 1
+  loop1DF = rbind(loop1DF, df_result)
+  }
+
+
+#------ Median parameters for loop 2 ------
+median_radius_h = median(loop1DF$radius_h, na.rm = TRUE)
+median_emddim_h = median(loop1DF$emddim_h, na.rm = TRUE)
+median_delay_h = median(loop1DF$delay_h, na.rm = TRUE)
+
+median_radius_r = median(loop1DF$radius_r, na.rm = TRUE)
+median_emddim_r = median(loop1DF$emddim_r, na.rm = TRUE)
+median_delay_r = median(loop1DF$delay_r, na.rm = TRUE)
+
+#------ Null list for loop 2 ------
+loop2DF = data.frame()
+
+i = PP_final[1]
+
+crqa_func = function(file){
+#------ Loop 2: CRQA ------
+#for (i in PP_final){
+  #------ Read file ------
+  file = read.csv(i, header = TRUE)
+  
+  #------ Extract info from filename ------
+  extract = str_extract_all(i, "\\d+", simplify = TRUE)
+  Study = extract[1]
+  Pair_number = extract[2]
+  Condition = extract[3]
+  
+  #------ CRQA ------
+  #Heart rate
+  a_h = try(crqa(file$HR1, file$HR2,delay = median_delay_h, embed= median_emddim_h, radius= median_radius_h,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+  
+  #If analysis fails, record NA
+  if (length(a_h) > 2) {
+    RR_h = a_h[1]
+    DET_h = a_h[2]
+    NRLINE_h = a_h[3]
+    maxL_h = a_h[4]
+    L_h = a_h[5]
+    ENTR_h = a_h[6]
+    rENTR_h = a_h[7]
+    LAM_h = a_h[8]
+    TT_h = a_h[9]
+  }
+  else {
+    RR_h = NA
+    DET_h = NA
+    NRLINE_h = NA
+    maxL_h = NA
+    L_h = NA
+    ENTR_h = NA
+    rENTR_h = NA
+    LAM_h = NA
+    TT_h = NA
+  }
+  #Respiration rate
+  a_r = try(crqa(file$Resp1, file$Resp2,delay = median_delay_r, embed= median_emddim_r, radius= median_radius_r,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+  
+  #If analysis fails, record NA
+  if (length(a_h) > 2) {
+    RR_r = a_r[1]
+    DET_r = a_r[2]
+    NRLINE_r = a_r[3]
+    maxL_r = a_r[4]
+    L_r = a_r[5]
+    ENTR_r = a_r[6]
+    rENTR_r = a_r[7]
+    LAM_r = a_r[8]
+    TT_r = a_r[9]
+  }
+  else {
+    RR_r = NA
+    DET_r = NA
+    NRLINE_r = NA
+    maxL_r = NA
+    L_r = NA
+    ENTR_r = NA
+    rENTR_r = NA
+    LAM_r = NA
+    TT_r = NA
+  }
+  
+
+  #------ Make dataframe ------  
+  #Make relevant information into a one row data frame
+  df_result = data.frame(Study, 
+                             Pair_number, 
+                             Condition, 
+    RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
+    RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
+                             )
+  
+  #Bind the above row to the actual dataset for loop 2
+  loop2DF = rbind(loop2DF, df_result)
+  
+  return(loop2DF)
+}
+
+
+ dflist = list()
+ n = 1
+
+# loop for files
+for (i in PP_final){
+  file = read.csv(i, header = TRUE)
+  
+  #  #------ Extract info from filename ------
+  # extract = str_extract_all(i, "\\d+", simplify = TRUE)
+  # Study = extract[1]
+  # Pair_number = extract[2]
+  # Condition = extract[3]
+ 
+  dflist[n] = file
+  n + 1
+}
+
+
+lapply(crqa_func, PP_final)
+
+loop2DF_shuf = data.frame()
+
+# SHUFFLING SHIT UP
+
+for (i in PP_final) {
+  file = read.csv(i, header = TRUE)
+  
+  extract = str_extract_all(i, "\\d+", simplify = TRUE)
+  Study = extract[1]
+  Pair_number = extract[2]
+  Condition = extract[3]
+  
+  s_HR1 = sample(file$HR1)
+  s_HR2 = sample(file$HR2)
+  s_Resp1 = sample(file$Resp1)
+  s_Resp2 = sample(file$Resp2)
+  
+  #------ CRQA ------
+  #Heart rate
+  a_h = try(crqa(s_HR1, s_HR2,delay = median_delay_h, embed= median_emddim_h, radius= median_radius_h,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+  
+  #If analysis fails, record NA
+  if (length(a_h) > 2) {
+    RR_h = a_h[1]
+    DET_h = a_h[2]
+    NRLINE_h = a_h[3]
+    maxL_h = a_h[4]
+    L_h = a_h[5]
+    ENTR_h = a_h[6]
+    rENTR_h = a_h[7]
+    LAM_h = a_h[8]
+    TT_h = a_h[9]
+  }
+  else {
+    RR_h = NA
+    DET_h = NA
+    NRLINE_h = NA
+    maxL_h = NA
+    L_h = NA
+    ENTR_h = NA
+    rENTR_h = NA
+    LAM_h = NA
+    TT_h = NA
+  }
+  #Respiration rate
+  a_r = try(crqa(s_Resp1, s_Resp2,delay = median_delay_r, embed= median_emddim_r, radius= median_radius_r,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+  
+  #If analysis fails, record NA
+  if (length(a_h) > 2) {
+    RR_r = a_r[1]
+    DET_r = a_r[2]
+    NRLINE_r = a_r[3]
+    maxL_r = a_r[4]
+    L_r = a_r[5]
+    ENTR_r = a_r[6]
+    rENTR_r = a_r[7]
+    LAM_r = a_r[8]
+    TT_r = a_r[9]
+  }
+  else {
+    RR_r = NA
+    DET_r = NA
+    NRLINE_r = NA
+    maxL_r = NA
+    L_r = NA
+    ENTR_r = NA
+    rENTR_r = NA
+    LAM_r = NA
+    TT_r = NA
+  }
+  
+
+  #------ Make dataframe ------  
+  #Make relevant information into a one row data frame
+  df_result = data.frame(Study, 
+                             Pair_number, 
+                             Condition, 
+    RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
+    RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
+                             )
+  
+  #Bind the above row to the actual dataset for loop 2
+  loop2DF_shuf = rbind(loop2DF_shuf, df_result)
+  
+}
+
+
+# SUROGATE PAIRS
+
+
+
+
+# MODELS
+
+m_int = lmer()
+
+
+```
+
+
 3) Do you observe differences in coordination between conditions? Report the models and results.
+
+```{r}
+
+```
+
 
 4) Is respiration coordination a likely driver of heart rate coordination? Describe how you would test for it. Bonus points if you actually run the tests and report methods and results.
 
