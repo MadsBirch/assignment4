@@ -65,6 +65,8 @@ test_file$Resp2 = scale(test_file$Resp2)
 ```
 
 
+Preprocessing and removal of files which still showed signs of artifacts
+
 ```{r}
 #Preprocessing function
 Prepro = function(path){
@@ -114,7 +116,7 @@ pp_file_list = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 #ggplot(test_file, aes(time, HR1))+geom_line()+labs(title = "hallo")
 
 # ggplot loop to see if there are still artifacts in pp data
-for (file in pp_file_list) {
+for (file in Shuffle_liezt) {
   dest = paste("", file, sep = '')
   #Read file
   x = read.csv(dest, header = TRUE)
@@ -128,7 +130,7 @@ for (file in pp_file_list) {
   print(ggplot(x, aes(time, Resp2))+geom_line()+labs(title = file))
 }
 
-#Manually removed files where the plots showed artifacts from the folder.
+#Manually removed files from the folder, where the plots showed artifacts.
 
 
 ```
@@ -139,8 +141,16 @@ for (file in pp_file_list) {
 #Loop 2 Kør CRQA med median parameter
 #Step 3 profit
 
+- Loop1: Optimizing the parameters
+- Find median paramters
+- Loop 2: Run CRQA with median parameters
+- Turn loop2 into a function
+- Make shuffled files and use function on them
+- Make surrogate files and use function on them
+
 
 ```{r}
+#------ Preparations for loop 1 ------
 #Make list of files to run through
 PP_final = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 
@@ -148,11 +158,11 @@ PP_final = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 par = list(lgM =  15, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 15, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = "mindip")
 
 #null list
-loop1DF = data.frame()
+#loop1DF = data.frame()
 
 #i = PP_final[1]
 
-#Loop1: preprocessing and optimizing parameters
+#------ Loop1:optimizing parameters ------
 for (i in PP_final){
   #------ Read file ------
   file = read.csv(i, header = TRUE)
@@ -217,13 +227,13 @@ median_emddim_r = median(loop1DF$emddim_r, na.rm = TRUE)
 median_delay_r = median(loop1DF$delay_r, na.rm = TRUE)
 
 #------ Null list for loop 2 ------
-loop2DF = data.frame()
+#loop2DF = data.frame()
+loop2_shuf = data.frame()
+loop2_test = data.frame()
+#i = PP_final[1]
 
-i = PP_final[1]
-
-crqa_func = function(file){
 #------ Loop 2: CRQA ------
-#for (i in PP_final){
+for (i in Shuffle_liezt){
   #------ Read file ------
   file = read.csv(i, header = TRUE)
   
@@ -264,7 +274,7 @@ crqa_func = function(file){
   a_r = try(crqa(file$Resp1, file$Resp2,delay = median_delay_r, embed= median_emddim_r, radius= median_radius_r,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
   
   #If analysis fails, record NA
-  if (length(a_h) > 2) {
+  if (length(a_r) > 2) {
     RR_r = a_r[1]
     DET_r = a_r[2]
     NRLINE_r = a_r[3]
@@ -293,16 +303,70 @@ crqa_func = function(file){
   df_result = data.frame(Study, 
                              Pair_number, 
                              Condition, 
-    RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
-    RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
+    "RR_h" = RR_h, "DET_h"=DET_h, "NRLINE_h"=NRLINE_h, "maxL_h"=maxL_h, "L_h"=L_h, "ENTR_h"=ENTR_h, "rENTR_h"=rENTR_h, "LAM_h"=LAM_h, "TT_h"=TT_h, 
+    "RR_r"=RR_r, "DET_r"=DET_r, "NRLINE_r"=NRLINE_r, "maxL_r"=maxL_r, "L_r"=L_r, "ENTR_r"=ENTR_r, "rENTR_r"=rENTR_r, "LAM_r"=LAM_r, "TT_r"=TT_r
                              )
   
   #Bind the above row to the actual dataset for loop 2
-  loop2DF = rbind(loop2DF, df_result)
+  loop2_shuf = rbind(loop2_shuf, df_result)
   
-  return(loop2DF)
 }
 
+
+
+Shuffle_liezt[1]
+
+test = read.csv("PP_ Study1_G1_T3_SelfPaced")
+
+#------ Shuffling ------
+
+ # - loop through all pairs and conditions
+ # - shuffle the timeseries (take a timeseries and rearrange its values in a random order). Tip check the sample() function
+ # - run crqa and save the output. NB. which delay, embed, radius parameters should you use?
+ # - statistically compare the crqa indexes in real and shuffled pairs
+
+
+#Loop creating the shuffle files
+for (i in PP_final){
+  #read file
+  file = read.csv(i, header = TRUE)
+  
+  #Shuffle variables
+  HR1_x = sample(file$HR1)
+  file$HR1 = HR1_x
+  HR2_x = sample(file$HR2)
+  file$HR2 = HR2_x
+  Resp1_x = sample(file$Resp1)
+  file$Resp1 = Resp1_x
+  Resp2_x = sample(file$Resp2)
+  file$Resp2 = Resp2_x
+  
+  #Write csv
+  #Remove PP_data/ from name and add Shuffle_data
+  filename = paste("Shuffle_data/Shuffled_", substring(i, first = 9, last = 1000000))
+  file = write.csv(file, file = filename, row.names = FALSE)
+}
+
+#List of shuffled files
+Shuffle_liezt =list.files('Shuffle_data', pattern = "*.csv", full.names = TRUE)
+
+lapply(crqa_func, Shuffle_liezt)
+
+
+
+
+
+#------ Surrogate Pairs ------
+
+ # - Per each real pair, identify at least one surrogate pair (matching one of the participants, with somebody doing the same task, but in a different pair). Tip: Celine will share a commented script
+ # - Run crqa on all the surrogate pairs and save the output. NB. which delay, embed, radius parameters should you use?
+ # - Test whether crqa shows a difference between real and surrogate pairs
+
+
+
+
+
+#------Stuff ------
 
  dflist = list()
  n = 1
@@ -416,11 +480,97 @@ for (i in PP_final) {
 
 
 
-# MODELS
+#------ MODELS ------
 
 m_int = lmer()
 
 
+```
+
+
+```{r}
+############################# CRQA FUNCTION ###############################
+crqa_func = function(path){
+    #------ Read file ------
+    file = read.csv(path, header = TRUE)
+    
+    #------ Extract info from filename ------
+    extract = str_extract_all(path, "\\d+", simplify = TRUE)
+    Study = extract[1]
+    Pair_number = extract[2]
+    Condition = extract[3]
+    
+    #------ CRQA ------
+    #Heart rate
+    a_h = try(crqa(file$HR1, file$HR2,delay = median_delay_h, embed= median_emddim_h, radius= median_radius_h,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+    
+    #If analysis fails, record NA
+    if (length(a_h) > 2) {
+      RR_h = a_h[1]
+      DET_h = a_h[2]
+      NRLINE_h = a_h[3]
+      maxL_h = a_h[4]
+      L_h = a_h[5]
+      ENTR_h = a_h[6]
+      rENTR_h = a_h[7]
+      LAM_h = a_h[8]
+      TT_h = a_h[9]
+    }
+    else {
+      RR_h = NA
+      DET_h = NA
+      NRLINE_h = NA
+      maxL_h = NA
+      L_h = NA
+      ENTR_h = NA
+      rENTR_h = NA
+      LAM_h = NA
+      TT_h = NA
+    }
+    #Respiration rate
+    a_r = try(crqa(file$Resp1, file$Resp2,delay = median_delay_r, embed= median_emddim_r, radius= median_radius_r,normalize=0,rescale=0,mindiagline = 2,minvertline = 2))
+    
+    #If analysis fails, record NA
+    if (length(a_h) > 2) {
+      RR_r = a_r[1]
+      DET_r = a_r[2]
+      NRLINE_r = a_r[3]
+      maxL_r = a_r[4]
+      L_r = a_r[5]
+      ENTR_r = a_r[6]
+      rENTR_r = a_r[7]
+      LAM_r = a_r[8]
+      TT_r = a_r[9]
+    }
+    else {
+      RR_r = NA
+      DET_r = NA
+      NRLINE_r = NA
+      maxL_r = NA
+      L_r = NA
+      ENTR_r = NA
+      rENTR_r = NA
+      LAM_r = NA
+      TT_r = NA
+    }
+    
+    
+    #------ Make one row ------  
+    #Make relevant information into a one row data frame
+    one_row = data.frame(Study, 
+                         Pair_number, 
+                         Condition, 
+                         RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
+                         RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
+    )
+  #Bind the above row to the actual dataset for loop 2
+  df_result = rbind(df_result, one_row)
+  
+  return(df_result)
+}
+
+
+qwerty = crqa_func(PP_final[1:2])
 ```
 
 
