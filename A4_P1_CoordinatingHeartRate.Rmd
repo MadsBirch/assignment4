@@ -146,10 +146,12 @@ for (file in Shuffle_liezt) {
 
 - Loop1: Optimizing the parameters
 - Find median paramters
-- Loop 2: Run CRQA with median parameters
-- Turn loop2 into a function
-- Make shuffled files and use function on them
-- Make surrogate files and use function on them
+- Make shuffled data and surrogate pairs
+- Loop 2: Run CRQA with median parameters on
+  - Preprocessed
+  - Shuffled
+  - Surrogate
+- Models
 
 
 Loop1
@@ -220,11 +222,6 @@ for (i in PP_final){
   loop1DF = rbind(loop1DF, df_result)
   }
 
-```
-
-
-Loop2
-```{r}
 #------ Median parameters for loop 2 ------
 median_radius_h = median(loop1DF$radius_h, na.rm = TRUE)
 median_emddim_h = median(loop1DF$emddim_h, na.rm = TRUE)
@@ -233,15 +230,144 @@ median_delay_h = median(loop1DF$delay_h, na.rm = TRUE)
 median_radius_r = median(loop1DF$radius_r, na.rm = TRUE)
 median_emddim_r = median(loop1DF$emddim_r, na.rm = TRUE)
 median_delay_r = median(loop1DF$delay_r, na.rm = TRUE)
+```
 
-#------ Null list for loop 2 ------
-#loop2DF = data.frame()
-loop2_shuf = data.frame()
+
+Make shuffled data
+```{r}
+#------ Shuffling ------
+#Loop creating the shuffle files
+for (i in PP_final){
+  #read file
+  file = read.csv(i, header = TRUE)
+  
+  #Shuffle variables
+  HR1_x = sample(file$HR1)
+  file$HR1 = HR1_x
+  
+  HR2_x = sample(file$HR2)
+  file$HR2 = HR2_x
+  
+  Resp1_x = sample(file$Resp1)
+  file$Resp1 = Resp1_x
+  
+  Resp2_x = sample(file$Resp2)
+  file$Resp2 = Resp2_x
+  
+  #Write csv
+  #Remove PP_data/ from name and add Shuffle_data
+  filename = paste("Shuffle_data/Shuffled_", substring(i, first = 9, last = 1000000))
+  file = write.csv(file, file = filename, row.names = FALSE)
+}
+
+#List of shuffled files
+Shuffle_liezt =list.files('Shuffle_data', pattern = "*.csv", full.names = TRUE)
+
+
+```
+
+
+Make Surrogate pairs
+```{r}
+#------ List files ------
+#List Files. One list for each study
+s1_list = list.files('PP_data_surrogate', pattern = "Study1", full.names = TRUE) # load the preprocessed files
+s2_list = list.files('PP_data_surrogate', pattern = "Study2", full.names = TRUE)
+
+
+#------ Create pairs -------
+#Get study, group and conditions as numbers
+#Needs to be changede when switching between studies
+num=str_extract_all(s1_list, "\\d+") #extract all numbers in the file name (i.e Study?_G?_T?)
+
+#Put numbers into data frame
+df= as.data.frame(t(as.data.frame(num))) #create a transposed (i.e. "tipped") dataframe of these number
+rownames(df)<-NULL #Remove rownames.
+
+#Get unique group numbers
+pairs=as.numeric(unique(as.numeric(as.character(df$V2)))) #create pairs, i.e. unique group numbers
+
+#Make a grid with the unique group numbers on each axis
+SurrogateList = expand.grid(a = pairs, b = pairs) #expand.grid: all possible combinations of a given vector
+#Remove the diagonal row, so an entry doesn't get paired with it self
+SurrogateList = subset(SurrogateList, a != b)
+
+
+#------ Loop through file lists via condition ------
+for (co in c("Synchronous","TurnTaking","SelfPaced")){ #loop through a list of condintions 
+  for (i in 1:nrow(SurrogateList)){ #and loop through all the pairings of the surrogate list
+  
+    #------ Load files ------
+    #start recreate filenames from the working directory based on the matching from the surrogatelist
+    #Needs to be changede when switching between studies
+    f1 = paste0('Study1_G',SurrogateList$a[i]) #Insert group number from Surrogatelist 
+    f2 = paste0('Study1_G',SurrogateList$b[i])
+    
+    #Add condition to the file name, completing it
+    file1 = s1_list[grepl(f1,s1_list)&grepl(co, s1_list)] #insert conditions as well.
+    file2 = s1_list[grepl(f2,s1_list)&grepl(co, s1_list)]
+    
+    #read the files as data frames
+    d1 = read.csv(file1) 
+    d2 = read.csv(file2)
+    
+    #Ensure both dataframes have the same length
+    if (nrow(d1)>nrow(d2)){
+      d1=d1[1:nrow(d2),]
+    } else {
+      d2=d2[1:nrow(d1),]
+    }
+    
+    #------ creation of surrogate files ------
+    #per each 2 pairs there are 4 possible surrogate pairs: 
+    
+    #pair1person1 w pair2person2; 1122
+    d3 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp2, HR1 = d1$HR1, HR2 = d2$HR2, Resp1S = d1$Resp1, Resp2S = d2$Resp2, HR1S = d1$HR1, HR2S = d2$HR2)
+    
+    #pair1person2 w pair2person2; 1222
+    d4 = data.frame(Resp1 = d2$Resp1, Resp2 = d1$Resp2, HR1 = d2$HR1, HR2 = d1$HR2, Resp1S = d2$Resp1, Resp2S = d1$Resp2, HR1S = d2$HR1, HR2S = d1$HR2)
+    
+    #pair1person1 w pair2person1; 1121
+    d5 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp1, HR1 = d1$HR1, HR2 = d2$HR1, Resp1S = d1$Resp1, Resp2S = d2$Resp1, HR1S = d1$HR1, HR2S = d2$HR1)
+    
+    #pair1person2 w pair2person2 1222, same as d4?????
+    d6 = data.frame(Resp1 = d2$Resp2, Resp2 = d1$Resp2 , HR1 = d2$HR2, HR2 = d1$HR2, Resp1S = d2$Resp2, Resp2S = d1$Resp2, HR1S = d2$HR2, HR2S=d1$HR2)
+    
+    #------ Write Files ------
+    #Make filenames that tells which pairs have been mixed
+    file3=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"a_",co,".csv")
+    file4=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"b_",co,".csv")
+    file5=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"c_",co,".csv")
+    file6=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"d_",co,".csv")
+    
+    #write csv files
+    write.csv(d3,file.path("Surrogate_data",file3))
+    write.csv(d4,file.path("Surrogate_data",file4))
+    write.csv(d5,file.path("Surrogate_data",file5))
+    write.csv(d6,file.path("Surrogate_data",file6))
+  }
+}
+
+#------ List of surrogate files ------
+surrogate_final =list.files('Surrogate_data', pattern = "*.csv", full.names = TRUE)
+
+
+```
+
+
+Loop2
+```{r}
+#------ Null data frames for loop 2 ------
+#loop2DF = data.frame() #PP_final
+loop2_shuf = data.frame() #shuffle_liezt
+loop2_surro = data.frame() #surrogate_final
+
+
 loop2_test = data.frame()
-#i = PP_final[1]
+
 
 #------ Loop 2: CRQA ------
-for (i in Shuffle_liezt){
+for (i in Shuffle_liezt){ #Change list
   #------ Read file ------
   file = read.csv(i, header = TRUE)
   
@@ -257,17 +383,16 @@ for (i in Shuffle_liezt){
   
   #If analysis fails, record NA
   if (length(a_h) > 2) {
-    RR_h = a_h[1]
-    DET_h = a_h[2]
-    NRLINE_h = a_h[3]
-    maxL_h = a_h[4]
-    L_h = a_h[5]
-    ENTR_h = a_h[6]
-    rENTR_h = a_h[7]
-    LAM_h = a_h[8]
-    TT_h = a_h[9]
-  }
-  else {
+    RR_h = a_h[1][[1]]
+    DET_h = a_h[2][[1]]
+    NRLINE_h = a_h[3][[1]]
+    maxL_h = a_h[4][[1]]
+    L_h = a_h[5][[1]]
+    ENTR_h = a_h[6][[1]]
+    rENTR_h = a_h[7][[1]]
+    LAM_h = a_h[8][[1]]
+    TT_h = a_h[9][[1]]
+  } else {
     RR_h = NA
     DET_h = NA
     NRLINE_h = NA
@@ -283,17 +408,16 @@ for (i in Shuffle_liezt){
   
   #If analysis fails, record NA
   if (length(a_r) > 2) {
-    RR_r = a_r[1]
-    DET_r = a_r[2]
-    NRLINE_r = a_r[3]
-    maxL_r = a_r[4]
-    L_r = a_r[5]
-    ENTR_r = a_r[6]
-    rENTR_r = a_r[7]
-    LAM_r = a_r[8]
-    TT_r = a_r[9]
-  }
-  else {
+    RR_r = a_r[1][[1]]
+    DET_r = a_r[2][[1]]
+    NRLINE_r = a_r[3][[1]]
+    maxL_r = a_r[4][[1]]
+    L_r = a_r[5][[1]]
+    ENTR_r = a_r[6][[1]]
+    rENTR_r = a_r[7][[1]]
+    LAM_r = a_r[8][[1]]
+    TT_r = a_r[9][[1]]
+  } else {
     RR_r = NA
     DET_r = NA
     NRLINE_r = NA
@@ -311,221 +435,82 @@ for (i in Shuffle_liezt){
   df_result = data.frame(Study, 
                              Pair_number, 
                              Condition, 
-    "RR_h" = RR_h, "DET_h"=DET_h, "NRLINE_h"=NRLINE_h, "maxL_h"=maxL_h, "L_h"=L_h, "ENTR_h"=ENTR_h, "rENTR_h"=rENTR_h, "LAM_h"=LAM_h, "TT_h"=TT_h, 
-    "RR_r"=RR_r, "DET_r"=DET_r, "NRLINE_r"=NRLINE_r, "maxL_r"=maxL_r, "L_r"=L_r, "ENTR_r"=ENTR_r, "rENTR_r"=rENTR_r, "LAM_r"=LAM_r, "TT_r"=TT_r
+   RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
+    RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
                              )
   
-  #Bind the above row to the actual dataset for loop 2
+  #Bind the above row to the actual data set
   loop2_shuf = rbind(loop2_shuf, df_result)
   
 }
 
 
 
-Shuffle_liezt[1]
-
-test = read.csv(Shuffle_liezt[1])
-
-#------ Shuffling ------
-
- # - loop through all pairs and conditions
- # - shuffle the timeseries (take a timeseries and rearrange its values in a random order). Tip check the sample() function
- # - run crqa and save the output. NB. which delay, embed, radius parameters should you use?
- # - statistically compare the crqa indexes in real and shuffled pairs
-
-
-#Loop creating the shuffle files
-for (i in PP_final){
-  #read file
-  file = read.csv(i, header = TRUE)
-  
-  #Shuffle variables
-  HR1_x = sample(file$HR1)
-  file$HR1 = HR1_x
-  HR2_x = sample(file$HR2)
-  file$HR2 = HR2_x
-  Resp1_x = sample(file$Resp1)
-  file$Resp1 = Resp1_x
-  Resp2_x = sample(file$Resp2)
-  file$Resp2 = Resp2_x
-  
-  #Write csv
-  #Remove PP_data/ from name and add Shuffle_data
-  filename = paste("Shuffle_data/Shuffled_", substring(i, first = 9, last = 1000000))
-  file = write.csv(file, file = filename, row.names = FALSE)
-}
-
-#List of shuffled files
-Shuffle_liezt =list.files('Shuffle_data', pattern = "*.csv", full.names = TRUE)
-
-lapply(crqa_func, Shuffle_liezt)
 
 
 
 
 
-#------ Surrogate Pairs ------
-
- # - Per each real pair, identify at least one surrogate pair (matching one of the participants, with somebody doing the same task, but in a different pair). Tip: Celine will share a commented script
- # - Run crqa on all the surrogate pairs and save the output. NB. which delay, embed, radius parameters should you use?
- # - Test whether crqa shows a difference between real and surrogate pairs
-
-#Make lists of files
-s1_list = list.files('PP_data', pattern = "Study1", full.names = TRUE) # load the preprocessed files
-s2_list = list.files('PP_data', pattern = "Study2", full.names = TRUE)
-
-
-
-
-
-num=str_extract_all(s1_list, "\\d+") #extract all numbers in the file name (i.e Study?_G?_T?)
-
-df= as.data.frame(t(as.data.frame(num))) #create a transposed (i.e. "tipped") dataframe of these number
-rownames(df)<-NULL #Remove rownames.
-
-pairs=as.numeric(unique(as.numeric(as.character(df$V2)))) #create pairs, i.e. unique group numbers
-
-SurrogateList <- expand.grid(a = pairs, b = pairs) # expand.grid combines all possible combinations of a given vector
-SurrogateList = subset(SurrogateList, a != b) # Ensure that pair 1 (i.e group1) doesn't get paired with it self.
-
-
-
-
-
-s1_list
-
-
-
-co = 'Synchronous'
-
-
-co
-i = 1
-
-f1
-
-s1_list[grep(f1, s1_list)]
-
-s1_list[grep(f1, s1_list)] 
-
-s1_list[grep(co, s1_list)]
-
-hest = s1_list[grep(f1, s1_list)grep(co, s1_list)]
-
-hest
-
-# Per each condition
-for (co in c("Synchronous","TurnTaking","SelfPaced")){ #loop through a list of condintions 
-  for (i in 1:nrow(SurrogateList)){ #and loop through all the pairings of the surrogate list
-  
-    #------ Load files ------
-    #start recreate filenames from the working directory based on the matching from the surrogatelist
-    f1 = paste0('Study1_G',SurrogateList$a[i]) #Insert group number from Surrogatelist 
-    f2 = paste0('Study1_G',SurrogateList$b[i])
-    
-    file1 = s1_list[grepl(f1,s1_list)&grepl(co, s1_list)] #insert conditions as well.
-    file2 = s1_list[grepl(f2,s1_list)&grepl(co, s1_list)]
-    
-    #Load the recreated filenames
-    d1 = read.csv(file1) 
-    d2 = read.csv(file2) 
-    
-    #Ensure both dataframes have the same length
-    if (nrow(d1)>nrow(d2)){
-      d1=d1[1:nrow(d2),]
-    } else {
-      d2=d2[1:nrow(d1),]
-    }
-    
-    #------ creation of surrogate files ------
-    #per each 2 pairs there are 4 possible surrogate pairs: 
-    
-    #pair1person1 w pair2person2; 1122
-    d3 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp2, HR1 = d1$HR1, HR2 = d2$HR2, Resp1S = d1$Resp1, Resp2S = d2$Resp, HR1S = d1$HR1, HR2S = d2$HR2)
-    
-    #pair1person2 w pair2person2; 1222
-    d4 = data.frame(Resp1 = d2$Resp1, Resp2 = d1$Resp2, HR1 = d2$HR1, HR2 = d1$HR2, Resp1S = d2$Resp1S, Resp2S = d1$Resp2S, HR1S = d2$HR1S, HR2S = d1$HR2S)
-    
-    #pair1person1 w pair2person1; 1121
-    d5 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp1, HR1 = d1$HR1, HR2 = d2$HR1, Resp1S = d1$Resp1, Resp2S = d2$Resp1, HR1S = d1$HR1, HR2S = d2$HR1)
-    
-    #pair1person2 w pair2person2 1222, same as line 62??????
-    d6 = data.frame(Resp1 = d2$Resp2, Resp2 = d1$Resp2 , HR1 = d2$HR2, HR2 = d1$HR2, Resp1S = d2$Resp2, Resp2S = d1$Resp2, HR1S = d2$HR2, HR2S=d1$HR2)
-    
-    #------ Write Files ------
-    #Make filenames that tells which pairs have been mixed
-    file3=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"a_",co,".csv")
-    file4=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"b_",co,".csv")
-    file5=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"c_",co,".csv")
-    file6=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"d_",co,".csv")
-    
-    #write csv files
-    write_csv(d3,file.path("Surrogate_data",file3))
-    write_csv(d4,file.path("Surrogate_data",file4))
-    write_csv(d5,file.path("Surrogate_data",file5))
-    write_csv(d6,file.path("Surrogate_data",file6))
-  }
-}
-
-
-
-
-
-
-
-
-
-#------ MODELS ------
-
-m_int = lmer()
 
 
 ```
 
 
+Models
+```{r}
+m_int = lmer()
+```
 
 
 
+3) Do you observe differences in coordination between conditions? Report the models and results.
 
-Step 1: There can be some problems with the working directory, for those of us who are not used to changing it all the time. I solved this by just putting all my files into the main folder where my working directory is by default and working from there.
-Step 2: Sometimes, the line
-pairs=as.numeric(unique(df$V2))
-Can give some trouble. A way to fix this is by changing it to
-pairs=as.numeric(unique(as.numeric(as.character(df$V2))))
-Step 3:
-In the end of the code, there are four sets of code each looking something like this:
-d5=data.frame(Resp1=d1$Resp1,Resp2=d2$Resp1,HR1=d1$HR1,HR2=d2$HR1,Resp1S=d1$Resp1S,Resp2S=d2$Resp1S,HR1S=d1$HR1S,HR2S=d2$HR1S)
-They should be changed to look like this:
-d5=data.frame(Resp1=d1$Resp1,Resp2=d2$Resp1,HR1=d1$HR1,HR2=d2$HR1,Resp1S=d1$Resp1,Resp2S=d2$Resp1,HR1S=d1$HR1,HR2S=d2$HR1)
-(Deleting the S'es after the dollar signs, but not the ones before)
-Remember to do it for all four sets of code.
-Step 4:
-There has to be a folder called "surrogate" in the working directory for the files to be put in
+```{r}
+
+```
 
 
+4) Is respiration coordination a likely driver of heart rate coordination? Describe how you would test for it. Bonus points if you actually run the tests and report methods and results.
 
+N.B. to give you a bit more data I included data from last year (Study1) and from your class (Study2). Note that synchronouns and turn-taking are the same across both studies, but the third condition is different: last year it was self-paced joint reading; this year it was the tv-series conversation. So you might want to exclude the self-paced reading (but, up to you!)
 
+## Step by step suggestions to solve the assignment
 
+### Exploring physiological signals
 
+- Choose one pair (one pair, three conditions)
+- Load the logs
+- Produce a plot of the participants' respiration signal and a different one of the participants' HR signal (for inspecting whether the data is usable)
+  N.B: remember the slides: artifacts, downsampling, scaling.
+  N.B. The gridExtra::grid.arrange() function allows you to display the plots side by side. E.g. grid.arrange(plot1, plot2, plot3, ncol=3)
+- Can you eye-ball which condition if any displays more physiological coordination?
 
+- Run crqa on heart rate and respiration data (find parameters, run crqa)
+- Does this tell you more than just eyeballing the plots?
 
+### Systematically pre-process the data
+- Loop through all the files (either with a loop or with a function), check which files should be excluded, if any, and save the pre-processed time-series. Tip: plot and visually inspect the data to figure out which should be excluded.
+- Run crqa on all the pre-processed time-series and save the output (don't forget to add columns with study, group, condition and trial). Tip: remember to first assess optimal parameters (dimensions, delay, radius) across all timeseries. Tip: it will often fail, just take whatever parameters you get, select optimal across timeseries parameters and run crqa on all timeseries with those. Tip: double check the rr. When I ran the loop, I got very low rr, so I adjusted the radius until the average of rr across all pairs was approx. 4%.
 
+### Creating controls: shuffled controls
+ - loop through all pairs and conditions
+ - shuffle the timeseries (take a timeseries and rearrange its values in a random order). Tip check the sample() function
+ - run crqa and save the output. NB. which delay, embed, radius parameters should you use?
+ - statistically compare the crqa indexes in real and shuffled pairs
+ 
+### TRICKY! Creating controls: surrogate pair controls
+ - Per each real pair, identify at least one surrogate pair (matching one of the participants, with somebody doing the same task, but in a different pair). Tip: Celine will share a commented script
+ - Run crqa on all the surrogate pairs and save the output. NB. which delay, embed, radius parameters should you use?
+ - Test whether crqa shows a difference between real and surrogate pairs
 
+### Testing effects of conditions
+ - make a (probably underpowered) mixed model testing effects of the different conditions on heart rate and respiration coordination
+ - N.B: would it make sense to include surrogate pairs? and if so how? what would that tell you?
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+### Effects of respiration coordination on heart rate coordination
+ - describe how you would test those.
+ - Optional: run the models and report them
+ 
 ```{r}
 ############################# CRQA FUNCTION ###############################
 crqa_func = function(path){
@@ -721,52 +706,5 @@ for (i in PP_final) {
 }
 
 ```
-
-
-3) Do you observe differences in coordination between conditions? Report the models and results.
-
-```{r}
-
-```
-
-
-4) Is respiration coordination a likely driver of heart rate coordination? Describe how you would test for it. Bonus points if you actually run the tests and report methods and results.
-
-N.B. to give you a bit more data I included data from last year (Study1) and from your class (Study2). Note that synchronouns and turn-taking are the same across both studies, but the third condition is different: last year it was self-paced joint reading; this year it was the tv-series conversation. So you might want to exclude the self-paced reading (but, up to you!)
-
-## Step by step suggestions to solve the assignment
-
-### Exploring physiological signals
-
-- Choose one pair (one pair, three conditions)
-- Load the logs
-- Produce a plot of the participants' respiration signal and a different one of the participants' HR signal (for inspecting whether the data is usable)
-  N.B: remember the slides: artifacts, downsampling, scaling.
-  N.B. The gridExtra::grid.arrange() function allows you to display the plots side by side. E.g. grid.arrange(plot1, plot2, plot3, ncol=3)
-- Can you eye-ball which condition if any displays more physiological coordination?
-
-- Run crqa on heart rate and respiration data (find parameters, run crqa)
-- Does this tell you more than just eyeballing the plots?
-
-### Systematically pre-process the data
-- Loop through all the files (either with a loop or with a function), check which files should be excluded, if any, and save the pre-processed time-series. Tip: plot and visually inspect the data to figure out which should be excluded.
-- Run crqa on all the pre-processed time-series and save the output (don't forget to add columns with study, group, condition and trial). Tip: remember to first assess optimal parameters (dimensions, delay, radius) across all timeseries. Tip: it will often fail, just take whatever parameters you get, select optimal across timeseries parameters and run crqa on all timeseries with those. Tip: double check the rr. When I ran the loop, I got very low rr, so I adjusted the radius until the average of rr across all pairs was approx. 4%.
-
-### Creating controls: shuffled controls
- - loop through all pairs and conditions
- - shuffle the timeseries (take a timeseries and rearrange its values in a random order). Tip check the sample() function
- - run crqa and save the output. NB. which delay, embed, radius parameters should you use?
- - statistically compare the crqa indexes in real and shuffled pairs
  
-### TRICKY! Creating controls: surrogate pair controls
- - Per each real pair, identify at least one surrogate pair (matching one of the participants, with somebody doing the same task, but in a different pair). Tip: Celine will share a commented script
- - Run crqa on all the surrogate pairs and save the output. NB. which delay, embed, radius parameters should you use?
- - Test whether crqa shows a difference between real and surrogate pairs
-
-### Testing effects of conditions
- - make a (probably underpowered) mixed model testing effects of the different conditions on heart rate and respiration coordination
- - N.B: would it make sense to include surrogate pairs? and if so how? what would that tell you?
-
-### Effects of respiration coordination on heart rate coordination
- - describe how you would test those.
- - Optional: run the models and report them
+ 
