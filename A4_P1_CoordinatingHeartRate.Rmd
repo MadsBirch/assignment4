@@ -21,8 +21,12 @@ library(ggplot2)
 library(crqa)
 library(modelr)
 library(dplyr)
+library(plyr)
 library(groupdata2)
 library(stringr)
+library(lme4)
+library(lmerTest)
+library(MuMIn)
 
 #------ Load data ------
 file_list = list.files('data', pattern = "*.csv", full.names = TRUE)
@@ -119,7 +123,7 @@ pp_file_list = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 #ggplot(test_file, aes(time, HR1))+geom_line()+labs(title = "hallo")
 
 # ggplot loop to see if there are still artifacts in pp data
-for (file in Shuffle_liezt) {
+for (file in Shuffle_liezt) { #PP_final, Shuffle_liezt, surrogate_final
   dest = paste("", file, sep = '')
   #Read file
   x = read.csv(dest, header = TRUE)
@@ -140,13 +144,10 @@ for (file in Shuffle_liezt) {
 
 2) Do you observe interpersonal coordination in heart rate and respiration? Describe your control baseline, the method used to quantify coordination, and the statistical models used to infer whether coordination was higher than in the baseline. Report the results of the models.
 
-#Loop 1 med data fra filnavn, descriptive stats, optimale parametre
-#Loop 2 Kør CRQA med median parameter
-#Step 3 profit
-
 - Loop1: Optimizing the parameters
 - Find median paramters
-- Make shuffled data and surrogate pairs
+- Make shuffled data
+- Make surrogate pairs
 - Loop 2: Run CRQA with median parameters on
   - Preprocessed
   - Shuffled
@@ -164,7 +165,7 @@ PP_final = list.files('PP_data', pattern = "*.csv", full.names = TRUE)
 par = list(lgM =  15, steps = seq(1, 6, 1),  radiusspan = 100,  radiussample = 15, normalize = 0,  rescale = 0,  mindiagline = 2,  minvertline = 2,  tw = 0,  whiteline = FALSE,  recpt = FALSE,  fnnpercent = 10,  typeami = "mindip")
 
 #null list
-#loop1DF = data.frame()
+loop1DF = data.frame()
 
 #i = PP_final[1]
 
@@ -177,7 +178,8 @@ for (i in PP_final){
   extract = str_extract_all(i, "\\d+", simplify = TRUE)
   Study = extract[1]
   Pair_number = extract[2]
-  Condition = extract[3]
+  Trial = extract[3]
+  Condition = gsub("Study_G_T_","", gsub("\\d","", gsub(".csv", "", i)))
   
   
   #------ Find optimal parameters ------
@@ -209,7 +211,7 @@ for (i in PP_final){
   #------ Save data ------
   #Make relevant information into a one row data frame
   df_result = data.frame(Study, 
-                             Pair_number, 
+                             Pair_number,Trial,
                              Condition, 
                              radius_h, 
                              emddim_h, 
@@ -231,7 +233,6 @@ median_radius_r = median(loop1DF$radius_r, na.rm = TRUE)
 median_emddim_r = median(loop1DF$emddim_r, na.rm = TRUE)
 median_delay_r = median(loop1DF$delay_r, na.rm = TRUE)
 ```
-
 
 Make shuffled data
 ```{r}
@@ -266,7 +267,6 @@ Shuffle_liezt =list.files('Shuffle_data', pattern = "*.csv", full.names = TRUE)
 
 ```
 
-
 Make Surrogate pairs
 ```{r}
 #------ List files ------
@@ -275,10 +275,11 @@ s1_list = list.files('PP_data_surrogate', pattern = "Study1", full.names = TRUE)
 s2_list = list.files('PP_data_surrogate', pattern = "Study2", full.names = TRUE)
 
 
+
 #------ Create pairs -------
 #Get study, group and conditions as numbers
 #Needs to be changede when switching between studies
-num=str_extract_all(s1_list, "\\d+") #extract all numbers in the file name (i.e Study?_G?_T?)
+num=str_extract_all(s2_list, "\\d+") #extract all numbers in the file name (i.e Study?_G?_T?)
 
 #Put numbers into data frame
 df= as.data.frame(t(as.data.frame(num))) #create a transposed (i.e. "tipped") dataframe of these number
@@ -294,51 +295,59 @@ SurrogateList = subset(SurrogateList, a != b)
 
 
 #------ Loop through file lists via condition ------
-for (co in c("Synchronous","TurnTaking","SelfPaced")){ #loop through a list of condintions 
+for (co in c("Synchronous","TurnTaking","Conversation")){ #loop through a list of condintions 
   for (i in 1:nrow(SurrogateList)){ #and loop through all the pairings of the surrogate list
   
     #------ Load files ------
     #start recreate filenames from the working directory based on the matching from the surrogatelist
     #Needs to be changede when switching between studies
-    f1 = paste0('Study1_G',SurrogateList$a[i]) #Insert group number from Surrogatelist 
-    f2 = paste0('Study1_G',SurrogateList$b[i])
+    f1 = paste0('Study2_G',SurrogateList$a[i]) #Insert group number from Surrogatelist 
+    f2 = paste0('Study2_G',SurrogateList$b[i])
+    
+   
+    
     
     #Add condition to the file name, completing it
-    file1 = s1_list[grepl(f1,s1_list)&grepl(co, s1_list)] #insert conditions as well.
-    file2 = s1_list[grepl(f2,s1_list)&grepl(co, s1_list)]
+    file1 = s2_list[grepl(f1,s2_list)&grepl(co, s2_list)] #insert conditions as well.
+    file2 = s2_list[grepl(f2,s2_list)&grepl(co, s2_list)]
+    
+     
     
     #read the files as data frames
     d1 = read.csv(file1) 
     d2 = read.csv(file2)
-    
+      
     #Ensure both dataframes have the same length
     if (nrow(d1)>nrow(d2)){
       d1=d1[1:nrow(d2),]
     } else {
       d2=d2[1:nrow(d1),]
     }
-    
+      
     #------ creation of surrogate files ------
     #per each 2 pairs there are 4 possible surrogate pairs: 
     
-    #pair1person1 w pair2person2; 1122
+    #pair1person1 w pair2person2
     d3 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp2, HR1 = d1$HR1, HR2 = d2$HR2, Resp1S = d1$Resp1, Resp2S = d2$Resp2, HR1S = d1$HR1, HR2S = d2$HR2)
-    
-    #pair1person2 w pair2person2; 1222
+      
+    #pair1person2 w pair2person2
     d4 = data.frame(Resp1 = d2$Resp1, Resp2 = d1$Resp2, HR1 = d2$HR1, HR2 = d1$HR2, Resp1S = d2$Resp1, Resp2S = d1$Resp2, HR1S = d2$HR1, HR2S = d1$HR2)
-    
-    #pair1person1 w pair2person1; 1121
+      
+    #pair1person1 w pair2person1
     d5 = data.frame(Resp1 = d1$Resp1, Resp2 = d2$Resp1, HR1 = d1$HR1, HR2 = d2$HR1, Resp1S = d1$Resp1, Resp2S = d2$Resp1, HR1S = d1$HR1, HR2S = d2$HR1)
-    
-    #pair1person2 w pair2person2 1222, same as d4?????
+      
+    #pair1person2 w pair2person2
     d6 = data.frame(Resp1 = d2$Resp2, Resp2 = d1$Resp2 , HR1 = d2$HR2, HR2 = d1$HR2, Resp1S = d2$Resp2, Resp2S = d1$Resp2, HR1S = d2$HR2, HR2S=d1$HR2)
+      
+      
     
+      
     #------ Write Files ------
     #Make filenames that tells which pairs have been mixed
-    file3=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"a_",co,".csv")
-    file4=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"b_",co,".csv")
-    file5=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"c_",co,".csv")
-    file6=paste0("Study1_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"d_",co,".csv")
+    file3=paste0("Study2_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"a_",co,".csv")
+    file4=paste0("Study2_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"b_",co,".csv")
+    file5=paste0("Study2_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"c_",co,".csv")
+    file6=paste0("Study2_SurrogateGroup",SurrogateList$a[i],"&",SurrogateList$b[i],"d_",co,".csv")
     
     #write csv files
     write.csv(d3,file.path("Surrogate_data",file3))
@@ -354,28 +363,26 @@ surrogate_final =list.files('Surrogate_data', pattern = "*.csv", full.names = TR
 
 ```
 
-
 Loop2
 ```{r}
 #------ Null data frames for loop 2 ------
 #loop2DF = data.frame() #PP_final
-loop2_shuf = data.frame() #shuffle_liezt
-loop2_surro = data.frame() #surrogate_final
+#loop2_shuf = data.frame() #shuffle_liezt
+#loop2_surro = data.frame() #surrogate_final
 
-
-loop2_test = data.frame()
 
 
 #------ Loop 2: CRQA ------
-for (i in Shuffle_liezt){ #Change list
+for (i in surrogate_final){ #PP_final, Shuffle_liezt, surrogate_final
   #------ Read file ------
   file = read.csv(i, header = TRUE)
   
   #------ Extract info from filename ------
   extract = str_extract_all(i, "\\d+", simplify = TRUE)
   Study = extract[1]
-  Pair_number = extract[2]
-  Condition = extract[3]
+  Group = extract[2]
+  Trial = extract[3]
+  Condition = gsub("Study_G_T_","", gsub("\\d","", gsub(".csv", "", i)))
   
   #------ CRQA ------
   #Heart rate
@@ -432,33 +439,69 @@ for (i in Shuffle_liezt){ #Change list
 
   #------ Make dataframe ------  
   #Make relevant information into a one row data frame
-  df_result = data.frame(Study, 
-                             Pair_number, 
+  df_result = data.frame(Study, Group, Trial,
                              Condition, 
    RR_h, DET_h, NRLINE_h, maxL_h, L_h, ENTR_h, rENTR_h, LAM_h, TT_h, 
     RR_r, DET_r, NRLINE_r, maxL_r, L_r, ENTR_r, rENTR_r, LAM_r, TT_r
                              )
   
   #Bind the above row to the actual data set
-  loop2_shuf = rbind(loop2_shuf, df_result)
+  loop2_surro = rbind(loop2_surro, df_result)
   
 }
 
+#Fix condition
+loop2DF$Condition = mapvalues(loop2DF$Condition, from = c("PP_data/PP_ SelfPaced", "PP_data/PP_ TurnTaking",'PP_data/PP_ Conversation', 'PP_data/PP_ Synchronous'), to = c("Selfpaced", "TurnTaking","Conversation","Synchronous"))
 
 
+loop2_shuf$Condition = mapvalues(loop2DF$Condition, from = c("Shuffle_data/Shuffled_ PP_ SelfPaced", "Shuffle_data/Shuffled_ PP_ TurnTaking",'Shuffle_data/Shuffled_ PP_ Conversation', 'Shuffle_data/Shuffled_ PP_ Synchronous'), to = c("Selfpaced", "TurnTaking","Conversation","Synchronous"))
+
+loop2_surro$Condition = mapvalues(loop2_surro$Condition, from = c("Surrogate_data/Study_SurrogateGroup&d_TurnTaking", 'Surrogate_data/Study_SurrogateGroup&d_Conversation', 'Surrogate_data/Study_SurrogateGroup&d_Synchronous'), to = c("TurnTaking", "Conversation", "Synchronous"))
 
 
+#Add type variable
+loop2DF$type = "norm"
+loop2_shuf$type = "shuf"
+loop2_surro$type = "surro"
 
+#save surrogate
+#write.csv(loop2_surro, "surrogate_data.csv")
 
+#fix group and trial in surrogate data
+#loop2_surro$Group = as.factor(paste0(loop2_surro$Group, "&", loop2_surro$Trial))
+loop2_surro$Trial = NA
+
+#Combine all the data
+data2 = rbind(loop2DF, loop2_shuf, loop2_surro)
+
+data2 = data2[data2$Condition != 'Selfpaced', ]
 
 
 
 ```
 
-
 Models
 ```{r}
-m_int = lmer()
+m_type_h = lmer(RR_h ~ type + (1|Group),  data2)
+summary(m_type_h)
+
+m_type_r = lmer(RR_r ~ type+ (1|Group),  data2)
+summary(m_type_r)
+
+ggplot(data2, aes(type, RR_r)) + geom_point()
+
+#Parameter list
+m_list = c('RR_h ~ type + (1|Group)', 'DET_h ~ type + (1|Group)','NRLINE_h ~ type + (1|Group)', 'maxL_h ~ type + (1|Group)','L_h ~ type + (1|Group)', 'ENTR_h ~ type + (1|Group)', 'rENTR_h ~ type + (1|Group)', 'LAM_h ~ type + (1|Group)', 'TT_h ~ type + (1|Group)', 
+           'RR_r ~ type + (1|Group)', 'DET_r ~ type + (1|Group)','NRLINE_r ~ type + (1|Group)', 'maxL_r ~ type + (1|Group)','L_r ~ type + (1|Group)', 'ENTR_r ~ type + (1|Group)', 'rENTR_r ~ type + (1|Group)', 'LAM_r ~ type + (1|Group)', 'TT_r ~ type + (1|Group)'
+  
+)
+
+for (i in m_list){
+  m = lmer(i, data2)
+  print(summary(m))
+}
+
+
 ```
 
 
@@ -466,6 +509,15 @@ m_int = lmer()
 3) Do you observe differences in coordination between conditions? Report the models and results.
 
 ```{r}
+#Parameter list
+m_list2 = c('RR_h ~ Condition*type + (1|Group)', 'DET_h ~ Condition*type + (1|Group)','NRLINE_h ~ Condition*type + (1|Group)', 'maxL_h ~ Condition*type + (1|Group)','L_h ~ Condition*type + (1|Group)', 'ENTR_h ~ Condition*type + (1|Group)', 'rENTR_h ~ Condition*type + (1|Group)', 'LAM_h ~ Condition*type + (1|Group)', 'TT_h ~ Condition*type + (1|Group)', 
+           'RR_r ~ Condition*type + (1|Group)', 'DET_r ~ Condition*type + (1|Group)','NRLINE_r ~ Condition*type + (1|Group)', 'maxL_r ~ Condition*type + (1|Group)','L_r ~ Condition*type + (1|Group)', 'ENTR_r ~ Condition*type + (1|Group)', 'rENTR_r ~ Condition*type + (1|Group)', 'LAM_r ~ Condition*type + (1|Group)', 'TT_r ~ Condition*type + (1|Group)'
+)
+
+for (i in m_list2){
+  m = lmer(i, data2)
+  print(summary(m))
+}
 
 ```
 
